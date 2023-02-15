@@ -69,6 +69,7 @@ const (
 type metricID struct {
 	service    string
 	operation  string
+	name       string
 	kind       string
 	statusCode string
 }
@@ -610,6 +611,8 @@ func verifyMetricLabels(dp metricDataPoint, t testing.TB, seenMetricIDs map[metr
 			mID.operation = v.Str()
 		case spanKindKey:
 			mID.kind = v.Str()
+		case spanNameKey:
+			mID.name = v.Str()
 		case statusCodeKey:
 			mID.statusCode = v.Str()
 		case notInSpanAttrName1:
@@ -1105,17 +1108,20 @@ func TestConsumeTracesEvictedCacheKey(t *testing.T) {
 
 func TestBuildMetricName(t *testing.T) {
 	tests := []struct {
-		namespace  string
-		metricName string
-		expected   string
+		namespace    string
+		metricName   string
+		standardized bool
+		expected     string
 	}{
-		{"", "metric", "metric"},
-		{"ns", "metric", "ns_metric"},
-		{"longer_namespace", "metric", "longer_namespace_metric"},
+		{"", "metric", false, "metric"},
+		{"ns", "metric", false, "ns_metric"},
+		{"longer_namespace", "metric", false, "longer_namespace_metric"},
+		{"ns", "metric", true, "ns.metric"},
+		{"longer_namespace", "metric", true, "longer_namespace.metric"},
 	}
 
 	for _, test := range tests {
-		actual := buildMetricName(test.namespace, test.metricName)
+		actual := buildMetricName(test.namespace, test.metricName, test.standardized)
 		assert.Equal(t, test.expected, actual)
 	}
 }

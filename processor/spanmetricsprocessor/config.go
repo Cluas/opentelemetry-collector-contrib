@@ -40,7 +40,6 @@ type Dimension struct {
 
 // Config defines the configuration options for spanmetricsprocessor.
 type Config struct {
-
 	// MetricsExporter is the name of the metrics exporter to use to ship metrics.
 	MetricsExporter string `mapstructure:"metrics_exporter"`
 
@@ -50,7 +49,7 @@ type Config struct {
 
 	// Dimensions defines the list of additional dimensions on top of the provided:
 	// - service.name
-	// - operation
+	// - operation (span.name if standardized is true)
 	// - span.kind
 	// - status.code
 	// The dimensions will be fetched from the span's attributes. Examples of some conventionally used attributes:
@@ -71,7 +70,10 @@ type Config struct {
 	MetricsFlushInterval time.Duration `mapstructure:"metrics_flush_interval"`
 
 	// Namespace defines the namespace for the metrics exported by the spanmetricsprocessor.
-	Namespace string
+	Namespace string `mapstructure:"namespace"`
+
+	// Standardized where closer to OpenTelemetry specification.
+	Standardized bool `mapstructure:"standardized"`
 }
 
 // GetAggregationTemporality converts the string value given in the config into a AggregationTemporality.

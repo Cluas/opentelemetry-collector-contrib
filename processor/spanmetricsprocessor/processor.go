@@ -40,6 +40,7 @@ import (
 
 const (
 	serviceNameKey     = conventions.AttributeServiceName
+	spanNameKey        = "span.name"
 	operationKey       = "operation"   // OpenTelemetry non-standard constant.
 	spanKindKey        = "span.kind"   // OpenTelemetry non-standard constant.
 	statusCodeKey      = "status.code" // OpenTelemetry non-standard constant.
@@ -49,6 +50,7 @@ const (
 
 	metricLatency    = "latency"
 	metricCallsTotal = "calls_total"
+	metricCalls      = "calls"
 )
 
 var defaultLatencyHistogramBucketsMs = []float64{
@@ -182,6 +184,7 @@ func validateDimensions(dimensions []Dimension, skipSanitizeLabel bool) error {
 		labelNames[sanitize(key, skipSanitizeLabel)] = struct{}{}
 	}
 	labelNames[operationKey] = struct{}{}
+	labelNames[spanNameKey] = struct{}{}
 
 	for _, key := range dimensions {
 		if _, ok := labelNames[key.Name]; ok {
@@ -334,9 +337,12 @@ func (p *processorImp) buildMetrics() pmetric.Metrics {
 // buildMetricName builds a metric name by concatenating the namespace and the metric name with an underscore.
 // If the namespace is not empty, the namespace and metric name will be separated by an underscore.
 // Otherwise, only the metric name will be returned.
-func buildMetricName(namespace, metricName string) string {
+func buildMetricName(namespace, metricName string, standardized bool) string {
 	if namespace != "" {
-		return namespace + "." + metricName
+		if standardized {
+			return namespace + "." + metricName
+		}
+		return namespace + "_" + metricName
 	}
 	return metricName
 }
@@ -345,7 +351,7 @@ func buildMetricName(namespace, metricName string) string {
 // into the given instrumentation library metrics.
 func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) {
 	mLatency := ilm.Metrics().AppendEmpty()
-	mLatency.SetName(buildMetricName(p.config.Namespace, metricLatency))
+	mLatency.SetName(buildMetricName(p.config.Namespace, metricLatency, p.config.Standardized))
 	mLatency.SetUnit("ms")
 	mLatency.SetEmptyHistogram().SetAggregationTemporality(p.config.GetAggregationTemporality())
 	dps := mLatency.Histogram().DataPoints()
@@ -373,7 +379,11 @@ func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) {
 // into the given instrumentation library metrics.
 func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) {
 	mCalls := ilm.Metrics().AppendEmpty()
-	mCalls.SetName(buildMetricName(p.config.Namespace, metricCallsTotal))
+	metricName := metricCallsTotal
+	if p.config.Standardized {
+		metricName = metricCalls
+	}
+	mCalls.SetName(buildMetricName(p.config.Namespace, metricName, p.config.Standardized))
 	mCalls.SetEmptySum().SetIsMonotonic(true)
 	mCalls.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 	dps := mCalls.Sum().DataPoints()
@@ -462,7 +472,11 @@ func (p *processorImp) buildDimensionKVs(serviceName string, span ptrace.Span, r
 	dims := pcommon.NewMap()
 	dims.EnsureCapacity(4 + len(p.dimensions))
 	dims.PutStr(serviceNameKey, serviceName)
-	dims.PutStr(operationKey, span.Name())
+	if p.config.Standardized {
+		dims.PutStr(spanNameKey, span.Name())
+	} else {
+		dims.PutStr(operationKey, span.Name())
+	}
 	dims.PutStr(spanKindKey, traceutil.SpanKindStr(span.Kind()))
 	dims.PutStr(statusCodeKey, traceutil.StatusCodeStr(span.Status().Code()))
 	for _, d := range p.dimensions {
